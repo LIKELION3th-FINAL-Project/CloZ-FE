@@ -5,6 +5,6 @@ import type { AgentRequest, AgentResponse } from "@/types";
 export const sendMessage = async (
   data: AgentRequest
 ): Promise<AgentResponse> => {
-  const response = await api.post<AgentResponse>("/api/agents/", data);
+  const response = await api.post<AgentResponse>("/ai/agents/", data);
   return response.data;
 };

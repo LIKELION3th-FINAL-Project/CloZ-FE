@@ -17,6 +17,10 @@ export default defineConfig({
         target: "http://localhost",
         changeOrigin: true,
       },
+      "/ai": {
+        target: "http://localhost",
+        changeOrigin: true,
+      },
       "/media": {
         target: "http://localhost",
         changeOrigin: true,
