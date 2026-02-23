@@ -7,9 +7,10 @@ import { useClosetStore } from "@/stores/closetStore";
 import { useCartStore } from "@/stores/cartStore";
 import { CartItem } from "@/components/cart/CartItem";
 import { CartSummary } from "@/components/cart/CartSummary";
-import type { Order, ClosetCategory, Gender, StyleType } from "@/types";
+import type { Order, ClosetCategory, Gender, StyleType, Address, AddressRequest } from "@/types";
 import * as ordersApi from "@/api/orders";
 import * as paymentsApi from "@/api/payments";
+import * as usersApi from "@/api/users";
 
 const MAX_STYLES = 3;
 
@@ -34,6 +35,41 @@ const styleOptions: { value: StyleType; label: string }[] = [
 // 스타일 값 → 한글 라벨 변환
 const styleLabelMap = Object.fromEntries(styleOptions.map((s) => [s.value, s.label]));
 
+const orderStatusLabelMap = {
+  PENDING: "결제대기",
+  PAID: "결제완료",
+  SHIPPED: "배송중",
+  DELIVERED: "배송완료",
+  CANCELLED: "주문취소",
+} as const;
+
+const formatOrderHeader = (order: Order) => {
+  const date = new Date(order.created_at)
+    .toLocaleDateString("ko-KR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+    .replace(/\.\s/g, ".")
+    .replace(/\.$/, "");
+
+  return `${date} 주문 · ${orderStatusLabelMap[order.status]} · ${order.total_price.toLocaleString()}원`;
+};
+
+const resolveAddressId = (address: Address): number | null => {
+  const legacyId = (address as Address & { id?: number }).id;
+  const rawId = address.address_id ?? legacyId ?? null;
+  return typeof rawId === "number" && Number.isFinite(rawId) ? rawId : null;
+};
+
+const getPreferredAddress = (addresses: Address[], selectedId: number | null) => {
+  const selected = addresses.find((address) => resolveAddressId(address) === selectedId);
+  if (selected) return selected;
+
+  const defaultAddress = addresses.find((address) => address.is_default);
+  return defaultAddress ?? addresses[0] ?? null;
+};
+
 function MyPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -48,6 +84,19 @@ function MyPage() {
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
+  const [showAddressEditor, setShowAddressEditor] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState<number | null>(null);
+  const [addressForm, setAddressForm] = useState<AddressRequest>({
+    receiver: "",
+    phone: "",
+    address: "",
+    is_default: false,
+  });
+  const [addressError, setAddressError] = useState("");
+  const [isSavingAddress, setIsSavingAddress] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [editNickname, setEditNickname] = useState("");
   const [editHeight, setEditHeight] = useState(0);
@@ -78,6 +127,7 @@ function MyPage() {
       fetchCloset();
       fetchCart();
       loadOrders();
+      loadAddresses();
     }
   }, [isAuthenticated]);
 
@@ -87,6 +137,30 @@ function MyPage() {
       setOrders(data);
     } catch (error) {
       console.error("Failed to load orders:", error);
+    }
+  };
+
+  const loadAddresses = async () => {
+    try {
+      const data = await usersApi.getAddresses();
+      setAddresses(data);
+      setSelectedAddressId((prevSelectedId) => {
+        if (data.length === 0) return null;
+
+        if (
+          prevSelectedId !== null &&
+          data.some((address) => resolveAddressId(address) === prevSelectedId)
+        ) {
+          return prevSelectedId;
+        }
+
+        const preferred = getPreferredAddress(data, null);
+        return preferred ? resolveAddressId(preferred) : null;
+      });
+    } catch (error) {
+      console.error("Failed to load addresses:", error);
+      setAddresses([]);
+      setSelectedAddressId(null);
     }
   };
 
@@ -192,13 +266,38 @@ function MyPage() {
       return;
     }
 
+    const preferredAddress = getPreferredAddress(addresses, selectedAddressId);
+    const preferredAddressId = preferredAddress ? resolveAddressId(preferredAddress) : null;
+
+    if (!preferredAddressId) {
+      alert("결제를 위해 배송지를 등록하거나 선택해주세요.");
+      setShowAddressEditor(true);
+      return;
+    }
+
+    setSelectedAddressId(preferredAddressId);
+    setShowCheckoutConfirm(true);
+  };
+
+  const handleConfirmCheckout = async () => {
+    const preferredAddress = getPreferredAddress(addresses, selectedAddressId);
+    const preferredAddressId = preferredAddress ? resolveAddressId(preferredAddress) : null;
+
+    if (!preferredAddressId) {
+      alert("배송지를 선택해주세요.");
+      return;
+    }
+
     setIsCheckingOut(true);
     try {
       const orderItems = cartItems.map((item) => ({
         product_id: item.product_id,
         quantity: item.quantity,
       }));
-      const orderResponse = await ordersApi.createOrder({ items: orderItems });
+      const orderResponse = await ordersApi.createOrder({
+        items: orderItems,
+        address_id: preferredAddressId,
+      });
 
       const paymentResponse = await paymentsApi.preparePayment({
         order_id: orderResponse.order_id,
@@ -212,6 +311,7 @@ function MyPage() {
       alert("결제가 완료되었습니다!");
       fetchCart();
       loadOrders();
+      setShowCheckoutConfirm(false);
       setActiveTab("orders");
     } catch (error) {
       console.error("Checkout failed:", error);
@@ -220,6 +320,78 @@ function MyPage() {
       setIsCheckingOut(false);
     }
   };
+
+  const openAddressEditorForCreate = () => {
+    setEditingAddressId(null);
+    setAddressForm({
+      receiver: "",
+      phone: "",
+      address: "",
+      is_default: addresses.length === 0,
+    });
+    setAddressError("");
+    setShowAddressEditor(true);
+  };
+
+  const openAddressEditorForEdit = (address: Address) => {
+    const addressId = resolveAddressId(address);
+    if (addressId === null) {
+      alert("배송지 식별자를 찾을 수 없어 수정할 수 없습니다.");
+      return;
+    }
+
+    setEditingAddressId(addressId);
+    setAddressForm({
+      receiver: address.receiver,
+      phone: address.phone,
+      address: address.address,
+      is_default: address.is_default,
+    });
+    setAddressError("");
+    setShowAddressEditor(true);
+  };
+
+  const handleAddressFormSubmit = async () => {
+    if (!addressForm.receiver.trim() || !addressForm.phone.trim() || !addressForm.address.trim()) {
+      setAddressError("받는 분, 연락처, 주소를 모두 입력해주세요.");
+      return;
+    }
+
+    setAddressError("");
+    setIsSavingAddress(true);
+    try {
+      if (editingAddressId !== null) {
+        await usersApi.updateAddress(editingAddressId, {
+          receiver: addressForm.receiver.trim(),
+          phone: addressForm.phone.trim(),
+          address: addressForm.address.trim(),
+          is_default: addressForm.is_default,
+        });
+        await loadAddresses();
+        setSelectedAddressId(editingAddressId);
+      } else {
+        const created = await usersApi.addAddress({
+          receiver: addressForm.receiver.trim(),
+          phone: addressForm.phone.trim(),
+          address: addressForm.address.trim(),
+          is_default: addressForm.is_default,
+        });
+        await loadAddresses();
+        const createdId =
+          created.address_id ??
+          (created as { id?: number }).id ??
+          null;
+        setSelectedAddressId(createdId);
+      }
+      setShowAddressEditor(false);
+    } catch (error: any) {
+      setAddressError(error.response?.data?.message || "배송지 저장에 실패했습니다.");
+    } finally {
+      setIsSavingAddress(false);
+    }
+  };
+
+  const selectedAddress = getPreferredAddress(addresses, selectedAddressId);
 
   const handleRemoveFromCloset = async (itemId: number) => {
     if (!confirm("옷장에서 삭제하시겠습니까?")) return;
@@ -442,6 +614,137 @@ function MyPage() {
           </div>
         )}
 
+        {/* 결제 전 배송지 확인 모달 */}
+        {showCheckoutConfirm && selectedAddress && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white w-full max-w-md mx-4">
+              <div className="flex items-center justify-between p-6 border-b border-gray-100">
+                <h2 className="text-sm font-medium tracking-wide">배송지 확인</h2>
+                <button
+                  onClick={() => setShowCheckoutConfirm(false)}
+                  className="text-gray-400 hover:text-black"
+                  disabled={isCheckingOut}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-6 space-y-3">
+                <p className="text-xs text-gray-400">아래 배송지로 주문을 진행할까요?</p>
+                <div className="border border-gray-200 p-4 text-sm space-y-2">
+                  <p className="font-medium">{selectedAddress.receiver}</p>
+                  <p className="text-gray-600">{selectedAddress.phone}</p>
+                  <p className="text-gray-700">{selectedAddress.address}</p>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-none"
+                    onClick={() => setShowCheckoutConfirm(false)}
+                    disabled={isCheckingOut}
+                  >
+                    취소
+                  </Button>
+                  <Button
+                    className="flex-1 rounded-none bg-black hover:bg-gray-800"
+                    onClick={handleConfirmCheckout}
+                    disabled={isCheckingOut}
+                  >
+                    {isCheckingOut ? "결제 중..." : "이 배송지로 결제"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 배송지 추가/수정 모달 */}
+        {showAddressEditor && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white w-full max-w-md mx-4">
+              <div className="flex items-center justify-between p-6 border-b border-gray-100">
+                <h2 className="text-sm font-medium tracking-wide">
+                  {editingAddressId !== null ? "배송지 수정" : "배송지 추가"}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowAddressEditor(false);
+                    setAddressError("");
+                  }}
+                  className="text-gray-400 hover:text-black"
+                  disabled={isSavingAddress}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-3">
+                <input
+                  type="text"
+                  placeholder="받는 분"
+                  value={addressForm.receiver}
+                  onChange={(e) =>
+                    setAddressForm((prev) => ({ ...prev, receiver: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-200 text-xs focus:outline-none focus:border-black"
+                />
+                <input
+                  type="text"
+                  placeholder="연락처"
+                  value={addressForm.phone}
+                  onChange={(e) =>
+                    setAddressForm((prev) => ({ ...prev, phone: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-200 text-xs focus:outline-none focus:border-black"
+                />
+                <input
+                  type="text"
+                  placeholder="주소"
+                  value={addressForm.address}
+                  onChange={(e) =>
+                    setAddressForm((prev) => ({ ...prev, address: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-200 text-xs focus:outline-none focus:border-black"
+                />
+                <label className="flex items-center text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={addressForm.is_default}
+                    onChange={(e) =>
+                      setAddressForm((prev) => ({
+                        ...prev,
+                        is_default: e.target.checked,
+                      }))
+                    }
+                    className="mr-2 accent-black"
+                  />
+                  기본 배송지로 설정
+                </label>
+                {addressError && <p className="text-xs text-red-500">{addressError}</p>}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-none text-xs"
+                    onClick={() => {
+                      setShowAddressEditor(false);
+                      setAddressError("");
+                    }}
+                    disabled={isSavingAddress}
+                  >
+                    취소
+                  </Button>
+                  <Button
+                    className="flex-1 rounded-none text-xs bg-black hover:bg-gray-800"
+                    onClick={handleAddressFormSubmit}
+                    disabled={isSavingAddress}
+                  >
+                    {isSavingAddress ? "저장 중..." : "저장"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex border-b border-gray-100 mb-8">
           <button
             onClick={() => setActiveTab("orders")}
@@ -494,26 +797,8 @@ function MyPage() {
                       className="border border-gray-100 p-5"
                     >
                       {/* 주문 헤더 */}
-                      <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
-                        <div className="flex items-center gap-3">
-                          <p className="text-sm font-medium">Order #{order.id}</p>
-                          <span
-                            className={`text-[10px] px-2 py-0.5 ${
-                              order.status === "PAID"
-                                ? "bg-black text-white"
-                                : order.status === "PENDING"
-                                ? "bg-gray-100 text-gray-600"
-                                : "bg-gray-100 text-gray-600"
-                            }`}
-                          >
-                            {order.status}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-gray-400">
-                            {new Date(order.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
+                      <div className="mb-4 pb-3 border-b border-gray-100">
+                        <p className="text-sm font-medium">{formatOrderHeader(order)}</p>
                       </div>
 
                       {/* 주문 상품 목록 */}
@@ -577,23 +862,85 @@ function MyPage() {
                   </Link>
                 </div>
               ) : (
-                <div className="grid md:grid-cols-3 gap-8">
-                  <div className="md:col-span-2">
-                    {cartItems.map((item) => (
-                      <CartItem
-                        key={item.product_id}
-                        item={item}
-                        onRemove={removeCartItem}
-                      />
-                    ))}
+                <div className="space-y-6">
+                  <div className="border border-gray-200 p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-sm font-medium">배송지</h3>
+                      <button
+                        onClick={openAddressEditorForCreate}
+                        className="text-xs text-gray-500 hover:text-black"
+                      >
+                        + 배송지 추가
+                      </button>
+                    </div>
+
+                    {addresses.length === 0 ? (
+                      <p className="text-xs text-gray-400">
+                        등록된 배송지가 없습니다. 배송지를 먼저 등록해주세요.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {addresses.map((address) => {
+                          const addressId = resolveAddressId(address);
+                          if (addressId === null) return null;
+
+                          const isSelected = selectedAddressId === addressId;
+                          return (
+                            <div
+                              key={addressId}
+                              onClick={() => setSelectedAddressId(addressId)}
+                              className={`border p-3 cursor-pointer transition-colors ${
+                                isSelected
+                                  ? "border-black bg-gray-50"
+                                  : "border-gray-200 hover:border-gray-400"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium">{address.receiver}</p>
+                                  {address.is_default && (
+                                    <span className="text-[10px] px-2 py-0.5 bg-black text-white">
+                                      기본
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openAddressEditorForEdit(address);
+                                  }}
+                                  className="text-[11px] text-gray-500 hover:text-black"
+                                >
+                                  수정
+                                </button>
+                              </div>
+                              <p className="text-xs text-gray-500">{address.phone}</p>
+                              <p className="text-xs text-gray-700 mt-1">{address.address}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <CartSummary
-                      totalQuantity={totalQuantity()}
-                      totalPrice={totalPrice()}
-                      onCheckout={handleCheckout}
-                      isLoading={isCheckingOut}
-                    />
+
+                  <div className="grid md:grid-cols-3 gap-8">
+                    <div className="md:col-span-2">
+                      {cartItems.map((item) => (
+                        <CartItem
+                          key={item.product_id}
+                          item={item}
+                          onRemove={removeCartItem}
+                        />
+                      ))}
+                    </div>
+                    <div>
+                      <CartSummary
+                        totalQuantity={totalQuantity()}
+                        totalPrice={totalPrice()}
+                        onCheckout={handleCheckout}
+                        isLoading={isCheckingOut}
+                      />
+                    </div>
                   </div>
                 </div>
               )}

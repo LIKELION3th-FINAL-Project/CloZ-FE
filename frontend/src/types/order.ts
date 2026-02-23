@@ -19,6 +19,7 @@ export interface OrderDetailItem {
 // 주문 생성 요청
 export interface CreateOrderRequest {
   items: OrderCreateItem[];
+  address_id: number;
 }
 
 // 주문 생성 응답
