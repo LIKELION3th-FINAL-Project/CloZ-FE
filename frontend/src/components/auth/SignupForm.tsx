@@ -40,6 +40,8 @@ export function SignupForm({ onSubmit, isLoading }: SignupFormProps) {
   });
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [bodyImageFile, setBodyImageFile] = useState<File | null>(null);
+  const [bodyImagePreview, setBodyImagePreview] = useState<string | null>(null);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -88,10 +90,27 @@ export function SignupForm({ onSubmit, isLoading }: SignupFormProps) {
     }
 
     try {
-      await onSubmit(formData);
+      await onSubmit({
+        ...formData,
+        body_image: bodyImageFile,
+      });
     } catch (err: any) {
       setError(err.response?.data?.message || "회원가입에 실패했습니다.");
     }
+  };
+
+  const handleBodyImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setBodyImageFile(file);
+
+    if (!file) {
+      setBodyImagePreview(null);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => setBodyImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -220,6 +239,29 @@ export function SignupForm({ onSubmit, isLoading }: SignupFormProps) {
             disabled={isLoading}
           />
         </div>
+      </div>
+
+      {/* 전신 사진 */}
+      <div>
+        <label className="block text-xs text-gray-400 mb-2">
+          Body Image (선택)
+        </label>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleBodyImageChange}
+          className="w-full px-3 py-2 border border-gray-200 text-xs"
+          disabled={isLoading}
+        />
+        {bodyImagePreview && (
+          <div className="mt-3 w-28 h-36 border border-gray-200 overflow-hidden">
+            <img
+              src={bodyImagePreview}
+              alt="Body preview"
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
       </div>
 
       {/* 선호 스타일 */}

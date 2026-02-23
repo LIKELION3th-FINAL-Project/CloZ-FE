@@ -27,6 +27,7 @@ export interface User {
   id: number;
   nickname: string;
   profile_image: string;
+  body_image_url?: string | null;
   height: number;
   weight: number;
   gender: Gender;
@@ -42,6 +43,7 @@ export interface SignupRequest {
   weight: number;
   gender: Gender;
   profile_image?: string;
+  body_image?: File | null;
   styles: StyleType[];
 }
 
@@ -68,6 +70,7 @@ export interface SocialAuthSignupRequest {
 export interface UpdateUserRequest {
   nickname?: string;
   profile_image?: string;
+  body_image?: File | null;
   height?: number;
   weight?: number;
   gender?: Gender;

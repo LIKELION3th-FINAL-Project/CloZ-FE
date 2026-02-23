@@ -8,6 +8,7 @@ export interface AgentUser {
   height: number;
   weight: number;
   styles: StyleType[];
+  body_image_url?: string | null;
 }
 
 // 에이전트 요청

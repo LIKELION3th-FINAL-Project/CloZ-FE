@@ -13,9 +13,49 @@ import type {
   Address,
 } from "@/types";
 
+const createUserFormData = (
+  data: SignupRequest | UpdateUserRequest
+): FormData => {
+  const formData = new FormData();
+
+  if ("login_id" in data && typeof data.login_id === "string") {
+    formData.append("login_id", data.login_id);
+  }
+  if ("password" in data && typeof data.password === "string") {
+    formData.append("password", data.password);
+  }
+  if (typeof data.nickname === "string") {
+    formData.append("nickname", data.nickname);
+  }
+  if (typeof data.height === "number") {
+    formData.append("height", String(data.height));
+  }
+  if (typeof data.weight === "number") {
+    formData.append("weight", String(data.weight));
+  }
+  if (typeof data.gender === "string") {
+    formData.append("gender", data.gender);
+  }
+  if (typeof data.profile_image === "string" && data.profile_image) {
+    formData.append("profile_image", data.profile_image);
+  }
+  if (Array.isArray(data.styles)) {
+    data.styles.forEach((style) => formData.append("styles", style));
+  }
+  if (data.body_image instanceof File) {
+    formData.append("body_image", data.body_image);
+  }
+
+  return formData;
+};
+
 // 이메일 회원가입
 export const signup = async (data: SignupRequest): Promise<AuthResponse> => {
-  const response = await api.post<AuthResponse>("/api/users/signup/", data);
+  const hasBodyImage = data.body_image instanceof File;
+  const payload = hasBodyImage ? createUserFormData(data) : data;
+  const response = await api.post<AuthResponse>("/api/users/signup/", payload, {
+    headers: hasBodyImage ? { "Content-Type": "multipart/form-data" } : undefined,
+  });
   return response.data;
 };
 
@@ -45,7 +85,11 @@ export const getMyPage = async (): Promise<User> => {
 
 // 회원정보 수정
 export const updateMyPage = async (data: UpdateUserRequest): Promise<User> => {
-  const response = await api.put<User>("/api/users/mypage/", data);
+  const hasBodyImage = data.body_image instanceof File;
+  const payload = hasBodyImage ? createUserFormData(data) : data;
+  const response = await api.put<User>("/api/users/mypage/", payload, {
+    headers: hasBodyImage ? { "Content-Type": "multipart/form-data" } : undefined,
+  });
   return response.data;
 };
 

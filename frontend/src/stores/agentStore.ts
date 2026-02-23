@@ -78,6 +78,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           height: user.height,
           weight: user.weight,
           styles: user.styles,
+          body_image_url: user.body_image_url ?? null,
         },
         closet,
         message,

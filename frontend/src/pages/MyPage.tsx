@@ -54,8 +54,11 @@ function MyPage() {
   const [editWeight, setEditWeight] = useState(0);
   const [editGender, setEditGender] = useState<Gender>("FEMALE");
   const [editStyles, setEditStyles] = useState<string[]>([]);
+  const [editBodyImageFile, setEditBodyImageFile] = useState<File | null>(null);
+  const [editBodyImagePreview, setEditBodyImagePreview] = useState<string | null>(null);
   const [editError, setEditError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editBodyImageInputRef = useRef<HTMLInputElement>(null);
   
   // URL 쿼리 파라미터에서 탭 읽기
   const tabParam = searchParams.get("tab");
@@ -99,6 +102,8 @@ function MyPage() {
     setEditWeight(user.weight);
     setEditGender(user.gender);
     setEditStyles([...user.styles]);
+    setEditBodyImageFile(null);
+    setEditBodyImagePreview(user.body_image_url ?? null);
     setEditError("");
     setShowEditProfile(true);
   };
@@ -129,11 +134,28 @@ function MyPage() {
         weight: editWeight,
         gender: editGender,
         styles: editStyles,
+        ...(editBodyImageFile ? { body_image: editBodyImageFile } : {}),
       });
       setShowEditProfile(false);
     } catch (error: any) {
       setEditError(error.response?.data?.message || "수정에 실패했습니다.");
     }
+  };
+
+  const handleEditBodyImageChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0] ?? null;
+    setEditBodyImageFile(file);
+
+    if (!file) {
+      setEditBodyImagePreview(user?.body_image_url ?? null);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => setEditBodyImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -226,9 +248,9 @@ function MyPage() {
         <div className="border-b border-gray-100 pb-8 mb-8">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center">
-              {user?.profile_image ? (
+              {user?.body_image_url || user?.profile_image ? (
                 <img
-                  src={user.profile_image}
+                  src={user.body_image_url || user.profile_image}
                   alt={user.nickname}
                   className="w-full h-full rounded-full object-cover"
                 />
@@ -335,6 +357,41 @@ function MyPage() {
                       className="w-full px-4 py-3 border border-gray-200 focus:outline-none focus:border-black transition-colors text-sm"
                     />
                   </div>
+                </div>
+
+                {/* 전신 사진 */}
+                <div>
+                  <label className="block text-xs text-gray-400 mb-2">Body Image</label>
+                  <input
+                    ref={editBodyImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleEditBodyImageChange}
+                    className="hidden"
+                  />
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => editBodyImageInputRef.current?.click()}
+                      className="px-3 py-2 text-xs border border-gray-200 hover:border-black transition-colors"
+                    >
+                      사진 선택
+                    </button>
+                    {editBodyImageFile && (
+                      <span className="text-[11px] text-gray-500 truncate max-w-[180px]">
+                        {editBodyImageFile.name}
+                      </span>
+                    )}
+                  </div>
+                  {editBodyImagePreview && (
+                    <div className="mt-3 w-24 h-32 border border-gray-200 overflow-hidden">
+                      <img
+                        src={editBodyImagePreview}
+                        alt="Body preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* 스타일 선택 */}
