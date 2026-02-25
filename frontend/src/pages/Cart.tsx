@@ -7,6 +7,7 @@ import { useCartStore } from "@/stores/cartStore";
 import { useAuthStore } from "@/stores/authStore";
 import * as ordersApi from "@/api/orders";
 import * as paymentsApi from "@/api/payments";
+import * as usersApi from "@/api/users";
 
 function Cart() {
   const navigate = useNavigate();
@@ -47,7 +48,18 @@ function Cart() {
         product_id: item.product_id,
         quantity: item.quantity,
       }));
-      const orderResponse = await ordersApi.createOrder({ items: orderItems });
+      const addresses = await usersApi.getAddresses();
+      const preferredAddress = addresses.find((address) => address.is_default) ?? addresses[0];
+      if (!preferredAddress) {
+        alert("결제를 위해 배송지를 등록해주세요.");
+        navigate("/mypage");
+        return;
+      }
+
+      const orderResponse = await ordersApi.createOrder({
+        items: orderItems,
+        address_id: preferredAddress.address_id,
+      });
 
       // 2. 결제 준비
       const paymentResponse = await paymentsApi.preparePayment({

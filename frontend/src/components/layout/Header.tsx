@@ -43,6 +43,13 @@ export function Header() {
     ${active ? "w-full" : "w-0 group-hover:w-full"}
   `;
 
+  const accountMenuItems = isAuthenticated
+    ? [{ to: "/mypage", label: "My Page" }]
+    : [
+        { to: "/login", label: "Login" },
+        { to: "/signup", label: "Signup" },
+      ];
+
   return (
     <header className="sticky top-0 z-50 w-full bg-white pt-10 pb-6">
       <div className="container mx-auto px-4">
@@ -155,10 +162,7 @@ export function Header() {
             `}>
               <div className="bg-white py-4 px-6 min-w-[140px] border-t border-gray-200">
                 <div className="flex flex-col items-center space-y-3">
-                  {[
-                    { to: "/login", label: "Login" },
-                    { to: "/mypage", label: "My Page" },
-                  ].map((item, index) => (
+                  {accountMenuItems.map((item, index) => (
                     <Link 
                       key={item.to}
                       to={item.to} 
