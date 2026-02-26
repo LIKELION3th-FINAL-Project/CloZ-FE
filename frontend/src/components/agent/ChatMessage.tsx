@@ -1,4 +1,7 @@
 import { User, Bot } from "lucide-react";
+import type { ReactNode } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatMessage as ChatMessageType } from "@/types";
 import { OutfitCard } from "./OutfitCard";
 
@@ -45,7 +48,95 @@ export function ChatMessage({ message }: ChatMessageProps) {
               : "bg-white border border-gray-100"
           }`}
         >
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              h1: (props) => (
+                <h1 className="text-base font-semibold mt-2 mb-2" {...props} />
+              ),
+              h2: (props) => (
+                <h2 className="text-base font-semibold mt-2 mb-2" {...props} />
+              ),
+              h3: (props) => (
+                <h3 className="text-sm font-semibold mt-2 mb-2" {...props} />
+              ),
+              p: (props) => (
+                <p
+                  className="whitespace-pre-wrap leading-6 [&:not(:first-child)]:mt-2"
+                  {...props}
+                />
+              ),
+              ul: (props) => (
+                <ul className="list-disc pl-5 mt-2 space-y-1" {...props} />
+              ),
+              ol: (props) => (
+                <ol className="list-decimal pl-5 mt-2 space-y-1" {...props} />
+              ),
+              li: (props) => <li className="leading-6" {...props} />,
+              hr: (props) => (
+                <hr
+                  className={`my-3 border-t ${
+                    isUser ? "border-white/20" : "border-gray-200"
+                  }`}
+                  {...props}
+                />
+              ),
+              a: ({ href, ...props }) => (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`underline underline-offset-2 ${
+                    isUser ? "text-white" : "text-neutral-900"
+                  }`}
+                  {...props}
+                />
+              ),
+              blockquote: (props) => (
+                <blockquote
+                  className={`border-l-2 pl-3 my-2 ${
+                    isUser ? "border-white/30 text-white/90" : "border-gray-200 text-gray-700"
+                  }`}
+                  {...props}
+                />
+              ),
+              code: (props) => {
+                const { inline, children, ...rest } = props as {
+                  inline?: boolean;
+                  children?: ReactNode;
+                } & Record<string, unknown>;
+
+                return inline ? (
+                  <code
+                    className={`px-1 py-0.5 rounded font-mono text-[0.85em] ${
+                      isUser ? "bg-white/15" : "bg-gray-100"
+                    }`}
+                    {...rest}
+                  >
+                    {children}
+                  </code>
+                ) : (
+                  <code className="font-mono text-[0.85em]" {...rest}>
+                    {children}
+                  </code>
+                );
+              },
+              pre: (props) => (
+                <pre
+                  className={`mt-2 overflow-x-auto rounded p-3 ${
+                    isUser
+                      ? "bg-white/10"
+                      : "bg-gray-50 border border-gray-100"
+                  }`}
+                  {...props}
+                />
+              ),
+              strong: (props) => <strong className="font-semibold" {...props} />,
+              em: (props) => <em className="italic" {...props} />,
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
         </div>
 
         {/* 코디 결과 (AI 응답) */}
